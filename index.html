@@ -1,0 +1,2001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0E1015">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Safety Alert">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Road Safety Navigator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{
+  --bg:#0E1015; --surface:#171A21; --surface2:#1E222B; --rule:#2A2F3A;
+  --ink:#F4F2EC; --muted:#8590A0;
+  --green:#22C55E; --teal:#14B8A6; --cyan:#22D3EE;
+  --amber:#FBBF24; --orange:#FB923C; --red:#EF4444; --pink:#EC4899;
+  --violet:#8B5CF6; --blue:#3B82F6;
+  --accent:#22C55E;
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --tabh:66px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{background:var(--bg);color:var(--ink);
+  font-family:'IBM Plex Sans',system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(130% 55% at 50% 0%,rgba(239,68,68,.20),transparent 60%);
+  opacity:0;transition:opacity .5s var(--ease)}
+body.danger::before{opacity:1}
+.shell{position:relative;z-index:1;max-width:640px;margin:0 auto;min-height:100%;
+  padding-bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px) + 14px)}
+
+.hazard{height:9px;position:sticky;top:0;z-index:60;
+  background-image:repeating-linear-gradient(115deg,#FBBF24 0 13px,#0E1015 13px 26px);
+  opacity:.18;transition:opacity .4s var(--ease)}
+body.danger .hazard{opacity:1;animation:crawl 1.05s linear infinite}
+@keyframes crawl{from{background-position:0 0}to{background-position:-52px 0}}
+
+header{padding:16px 20px 0;display:flex;align-items:flex-start;
+  justify-content:space-between;gap:14px}
+.mark{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;
+  letter-spacing:.15em;text-transform:uppercase;line-height:1.1;
+  background:linear-gradient(92deg,#22D3EE,#22C55E 55%,#FBBF24);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.mark span{display:block;color:var(--muted);font-weight:500;letter-spacing:.2em;
+  font-size:10px;margin-top:3px;background:none;-webkit-text-fill-color:var(--muted)}
+.plate{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.08em;
+  border:1px solid var(--rule);border-radius:4px;padding:5px 9px;white-space:nowrap;
+  background:var(--surface);color:var(--ink)}
+
+.page{display:none;animation:fade .3s var(--ease)}
+.page.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:70;
+  height:calc(var(--tabh) + env(safe-area-inset-bottom,0px));
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  background:rgba(16,18,24,.97);backdrop-filter:blur(16px);
+  border-top:1px solid var(--rule);display:flex;max-width:640px;margin:0 auto;
+  transition:border-color .3s}
+body.danger .tabbar{border-top-color:var(--red)}
+.tab{flex:1;background:none;border:none;cursor:pointer;padding:10px 2px 8px;
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  color:var(--muted);transition:color .2s;position:relative}
+.tab svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
+.tab span{font-family:'Barlow Condensed',sans-serif;font-size:10.5px;
+  letter-spacing:.1em;text-transform:uppercase;font-weight:600}
+.tab.on{color:var(--ink)}
+.tab.on::before{content:'';position:absolute;top:0;left:22%;right:22%;height:2px;
+  background:var(--accent);border-radius:0 0 3px 3px;
+  box-shadow:0 0 12px var(--accent)}
+.tab .pip{position:absolute;top:8px;right:calc(50% - 18px);width:7px;height:7px;
+  border-radius:50%;background:var(--red);display:none}
+.tab .pip.show{display:block}
+
+.status{padding:22px 20px 16px;display:flex;gap:16px;align-items:flex-start}
+.stxt{flex:1;min-width:0}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--muted);display:flex;align-items:center;
+  gap:8px;margin-bottom:9px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none;
+  box-shadow:0 0 10px var(--accent)}
+body.danger .dot{animation:ping 1.3s ease-out infinite}
+@keyframes ping{0%{box-shadow:0 0 0 0 rgba(239,68,68,.65)}
+  100%{box-shadow:0 0 0 14px rgba(239,68,68,0)}}
+h1{font-family:'Barlow Condensed',sans-serif;font-weight:700;
+  font-size:clamp(34px,11vw,52px);line-height:.9;letter-spacing:-.01em;
+  text-transform:uppercase;margin:0;color:var(--accent);transition:color .35s var(--ease)}
+.sub{margin:11px 0 0;font-size:14px;line-height:1.55;color:#AEB6C4;max-width:40ch}
+.gauge{width:92px;height:92px;flex:none;display:none;position:relative}
+body.tracking .gauge{display:block}
+.gauge svg{transform:rotate(-90deg)}
+.gauge .trk{fill:none;stroke:var(--rule);stroke-width:5}
+.gauge .arc{fill:none;stroke:var(--accent);stroke-width:5;stroke-linecap:round;
+  transition:stroke-dashoffset .6s var(--ease),stroke .35s}
+.gauge .lbl{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace}
+.gauge .n{font-size:22px;line-height:1}
+.gauge .u{font-size:8px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--muted);margin-top:4px}
+
+.grid{padding:0 20px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid.g3{grid-template-columns:repeat(3,1fr)}
+.stat{background:var(--surface);border:1px solid var(--rule);border-radius:9px;
+  padding:12px 13px;position:relative;overflow:hidden}
+.stat::after{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--rule)}
+.stat.c1::after{background:linear-gradient(180deg,#22D3EE,#3B82F6)}
+.stat.c2::after{background:linear-gradient(180deg,#FBBF24,#FB923C)}
+.stat.c3::after{background:linear-gradient(180deg,#22C55E,#14B8A6)}
+.stat.c4::after{background:linear-gradient(180deg,#EF4444,#EC4899)}
+.stat .k{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.stat .v{font-family:'IBM Plex Mono',monospace;font-size:19px;line-height:1}
+.stat .v.sm{font-size:13px}
+.stat .v.hot{color:var(--red)} .stat .v.ok{color:var(--green)}
+.actions{padding:15px 20px 4px;display:grid;gap:9px}
+button.act,.linkbtn{font-family:'Barlow Condensed',sans-serif;font-size:16px;
+  font-weight:600;letter-spacing:.11em;text-transform:uppercase;padding:15px 16px;
+  border-radius:6px;border:1px solid transparent;width:100%;cursor:pointer;
+  text-align:center;text-decoration:none;display:block;
+  transition:filter .2s,border-color .2s,color .2s,transform .12s}
+button.act:active,.linkbtn:active{transform:scale(.985)}
+button.act:disabled{opacity:.45;cursor:default}
+.b-primary{background:linear-gradient(96deg,#22D3EE,#3B82F6);color:#08131B;
+  font-weight:700}
+.b-primary:hover{filter:brightness(1.08)}
+.b-go{background:linear-gradient(96deg,#22C55E,#14B8A6);color:#04140C;font-weight:700}
+.b-nav{background:transparent;color:var(--amber);border-color:var(--amber)}
+.b-ghost{background:transparent;color:var(--muted);border-color:var(--rule)}
+.b-ghost.on{border-color:var(--amber);color:var(--amber)}
+.b-stop{background:transparent;color:var(--red);border-color:var(--red)}
+
+.panel{margin:20px 20px 0;border-top:1px solid var(--rule);padding-top:13px}
+.panel.first{border-top:none;padding-top:4px}
+.panel h2{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--muted);font-weight:500;margin:0 0 10px;
+  display:flex;justify-content:space-between;align-items:center}
+.count{background:var(--rule);color:var(--ink);border-radius:9px;padding:1px 8px;
+  font-size:10px;letter-spacing:.06em}
+.count.hot{background:rgba(239,68,68,.22);color:var(--red)}
+.count.ok{background:rgba(34,197,94,.18);color:var(--green)}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;
+  padding:9px 0;border-bottom:1px solid rgba(42,47,58,.6);font-size:13.5px}
+.row:last-child{border-bottom:none}
+.row .k{color:var(--muted)}
+.row .v{font-family:'IBM Plex Mono',monospace;font-size:12.5px;text-align:right}
+.hot{color:var(--red)}
+.fresh{display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--green);margin-right:6px;animation:blip 2s ease-in-out infinite}
+@keyframes blip{0%,100%{opacity:1}50%{opacity:.25}}
+.fresh.stale{background:var(--muted);animation:none}
+
+/* ---------- route planner ---------- */
+.trip{padding:0 20px}
+.field{display:flex;align-items:center;gap:10px;background:var(--surface);
+  border:1px solid var(--rule);border-radius:8px;padding:0 12px;margin-bottom:8px;
+  transition:border-color .2s}
+.field:focus-within{border-color:var(--cyan)}
+.pin{width:10px;height:10px;border-radius:50%;flex:none}
+.pin.a{background:var(--cyan);box-shadow:0 0 9px var(--cyan)}
+.pin.b{background:var(--red);box-shadow:0 0 9px var(--red)}
+.field input{flex:1;background:none;border:none;outline:none;color:var(--ink);
+  font-family:'IBM Plex Sans',sans-serif;font-size:14.5px;padding:14px 0;min-width:0}
+.field input::placeholder{color:var(--muted)}
+.mini{background:none;border:1px solid var(--rule);color:var(--muted);
+  border-radius:5px;padding:5px 9px;font-size:10px;letter-spacing:.09em;
+  text-transform:uppercase;cursor:pointer;font-family:'Barlow Condensed',sans-serif;
+  font-weight:600;white-space:nowrap;transition:color .2s,border-color .2s}
+.mini:hover{color:var(--cyan);border-color:var(--cyan)}
+.sug{background:var(--surface2);border:1px solid var(--rule);border-radius:8px;
+  margin:-4px 0 10px;overflow:hidden}
+.sug div{padding:11px 13px;font-size:13px;line-height:1.4;cursor:pointer;
+  border-bottom:1px solid var(--rule)}
+.sug div:last-child{border-bottom:none}
+.sug div:hover{background:var(--rule)}
+.swap{display:flex;justify-content:center;margin:-3px 0 5px}
+.swap button{background:var(--surface2);border:1px solid var(--rule);
+  color:var(--muted);width:32px;height:32px;border-radius:50%;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all .2s}
+.swap button:hover{color:var(--cyan);border-color:var(--cyan)}
+.swap svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+
+.sug div .nm{font-size:13.5px;line-height:1.35;color:var(--ink)}
+.sug div .meta{display:flex;align-items:center;gap:8px;margin-top:5px;flex-wrap:wrap}
+.badge{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.13em;
+  text-transform:uppercase;padding:2px 7px;border-radius:4px;
+  background:rgba(34,211,238,.14);color:var(--cyan)}
+.badge.road{background:rgba(139,92,246,.15);color:var(--violet)}
+.badge.poi{background:rgba(251,191,36,.14);color:var(--amber)}
+.badge.area{background:rgba(34,197,94,.14);color:var(--green)}
+.away{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted)}
+.sug .sechead{padding:9px 13px 6px;font-family:'IBM Plex Mono',monospace;
+  font-size:8.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);
+  cursor:default;background:none}
+.sug .sechead:hover{background:none}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:0 20px 2px;margin-top:12px;
+  -webkit-overflow-scrolling:touch}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;background:var(--surface);border:1px solid var(--rule);
+  border-radius:9px;padding:10px 13px;cursor:pointer;min-width:132px;
+  transition:border-color .2s,background .2s}
+.chip.on{border-color:var(--cyan);background:rgba(34,211,238,.09)}
+.chip.safe{border-left:3px solid var(--green)}
+.chip.risk{border-left:3px solid var(--red)}
+.chip .lb{font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.chip.on .lb{color:var(--cyan)}
+.chip .mn{font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--ink)}
+.chip .zn{font-family:'IBM Plex Mono',monospace;font-size:10px;margin-top:5px}
+.chip .zn.g{color:var(--green)} .chip .zn.r{color:var(--red)}
+.tiphint{font-size:11.5px;line-height:1.5;color:var(--muted);margin:2px 0 0}
+.pickbar{margin:10px 20px 0;background:linear-gradient(135deg,rgba(34,211,238,.14),
+  rgba(59,130,246,.05));border:1px solid rgba(34,211,238,.45);border-radius:9px;
+  padding:12px 14px;display:none;align-items:center;justify-content:space-between;
+  gap:12px;animation:slide .35s var(--ease)}
+.pickbar.show{display:flex}
+.pickbar .m{font-size:12.5px;line-height:1.45;color:#AEB6C4}
+.pickbar .m b{color:var(--cyan);display:block;font-family:'Barlow Condensed',sans-serif;
+  letter-spacing:.09em;text-transform:uppercase;font-size:12.5px;margin-bottom:3px}
+.pickbar button{background:none;border:1px solid var(--rule);color:var(--muted);
+  border-radius:5px;padding:7px 11px;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;cursor:pointer;white-space:nowrap;
+  font-family:'Barlow Condensed',sans-serif;font-weight:600}
+.summary{margin:14px 20px 0;background:linear-gradient(135deg,rgba(34,211,238,.10),
+  rgba(59,130,246,.05));border:1px solid rgba(34,211,238,.28);border-radius:10px;
+  padding:14px 16px;display:none;animation:slide .4s var(--ease)}
+.summary.show{display:block}
+.summary.risky{background:linear-gradient(135deg,rgba(239,68,68,.13),
+  rgba(236,72,153,.05));border-color:rgba(239,68,68,.38)}
+.sumrow{display:flex;gap:22px;flex-wrap:wrap}
+.sumitem .k{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.sumitem .v{font-family:'IBM Plex Mono',monospace;font-size:21px;line-height:1}
+.sumitem .v.warn{color:var(--red)} .sumitem .v.safe{color:var(--green)}
+.sumnote{font-size:12.5px;line-height:1.5;color:#AEB6C4;margin-top:12px;
+  padding-top:11px;border-top:1px solid rgba(42,47,58,.7)}
+
+.mapstyle{display:flex;gap:6px;padding:0 20px 9px;overflow-x:auto}
+.mapstyle::-webkit-scrollbar{display:none}
+.msbtn{flex:none;background:var(--surface);border:1px solid var(--rule);
+  color:var(--muted);border-radius:6px;padding:8px 13px;cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;transition:all .2s}
+.msbtn.on{border-color:var(--cyan);color:var(--cyan);background:rgba(34,211,238,.09)}
+.leaflet-container.light{background:#EAE8E3}
+.leaflet-container.light .leaflet-control-attribution{
+  background:rgba(255,255,255,.85)!important;color:#5F6368!important}
+.leaflet-container.light .leaflet-control-attribution a{color:#1A73E8!important}
+.leaflet-container.light .leaflet-bar a{background:#FFFFFF!important;
+  color:#3C4043!important;border-color:#DADCE0!important}
+.leaflet-container.light .leaflet-popup-content-wrapper{
+  background:#FFFFFF;color:#202124;box-shadow:0 2px 10px rgba(0,0,0,.22)}
+.leaflet-container.light .leaflet-popup-tip{background:#FFFFFF}
+.leaflet-container.light .leaflet-popup-content a{color:#1A73E8}
+#map{height:44vh;min-height:250px;border:1px solid var(--rule);border-radius:9px;
+  background:var(--surface)}
+.mapwrap{padding:0 20px}
+.leaflet-container{background:var(--surface)}
+.leaflet-control-attribution{background:rgba(14,16,21,.8)!important;
+  color:#5C636E!important;font-size:9px!important}
+.leaflet-control-attribution a{color:#6E7683!important}
+.leaflet-bar a{background:#171A21!important;color:#F4F2EC!important;
+  border-color:#2A2F3A!important}
+.leaflet-popup-content-wrapper{background:#1E222B;color:#F4F2EC;border-radius:7px}
+.leaflet-popup-tip{background:#1E222B}
+.leaflet-popup-content{font-family:'IBM Plex Sans',sans-serif;font-size:12.5px}
+.leaflet-popup-content a{color:var(--cyan)}
+
+/* ---------- navigation mode ---------- */
+.navbox{margin:14px 20px 0;border-radius:11px;padding:16px;display:none;
+  background:linear-gradient(140deg,rgba(34,197,94,.11),rgba(20,184,166,.04));
+  border:1px solid rgba(34,197,94,.3);animation:slide .4s var(--ease)}
+.navbox.show{display:block}
+.navbox.warn{background:linear-gradient(140deg,rgba(251,191,36,.14),
+  rgba(251,146,60,.05));border-color:rgba(251,191,36,.42)}
+.navbox.crit{background:linear-gradient(140deg,rgba(239,68,68,.18),
+  rgba(236,72,153,.06));border-color:rgba(239,68,68,.55);
+  animation:pulseBox 1.2s ease-in-out infinite}
+@keyframes pulseBox{0%,100%{border-color:rgba(239,68,68,.55)}
+  50%{border-color:rgba(239,68,68,1)}}
+.navbox .lab{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.navbox .big{font-family:'Barlow Condensed',sans-serif;font-size:33px;line-height:.95;
+  text-transform:uppercase;letter-spacing:.01em}
+.navbox .big.g{color:var(--green)} .navbox .big.a{color:var(--amber)}
+.navbox .big.r{color:var(--red)}
+.navbox .det{font-size:13px;line-height:1.5;color:#AEB6C4;margin-top:9px}
+.navbox .mono{font-family:'IBM Plex Mono',monospace;font-size:12px;
+  color:var(--muted);margin-top:8px}
+
+.zrow{border-left:3px solid var(--red);padding:11px 0 11px 13px;margin-bottom:9px;
+  background:linear-gradient(90deg,rgba(239,68,68,.09),transparent 74%);
+  border-radius:0 7px 7px 0;animation:slide .4s var(--ease)}
+@keyframes slide{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.zrow .a{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.zrow .t{font-family:'Barlow Condensed',sans-serif;font-size:14px;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--red)}
+.zrow .km{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--amber)}
+.zrow .c{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#AEB6C4;margin-top:5px}
+.zrow .w{font-size:11px;color:var(--muted);margin-top:4px}
+
+.stp{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid rgba(42,47,58,.6);
+  font-size:13px;line-height:1.45}
+.stp:last-child{border-bottom:none}
+.stp .n{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--cyan);
+  flex:none;width:34px;padding-top:2px}
+.stp .d{color:#AEB6C4}
+.stp .d b{color:var(--ink);font-weight:500}
+.foldbtn{background:none;border:none;color:var(--cyan);font-size:12px;cursor:pointer;
+  padding:8px 0;font-family:'IBM Plex Sans',sans-serif}
+.fold{display:none} .fold.open{display:block}
+
+.alrt{border-left:3px solid var(--amber);padding:11px 0 11px 13px;margin-bottom:10px;
+  background:linear-gradient(90deg,rgba(251,191,36,.08),transparent 74%);
+  border-radius:0 7px 7px 0;animation:slide .45s var(--ease)}
+.alrt.red{border-left-color:var(--red);
+  background:linear-gradient(90deg,rgba(239,68,68,.09),transparent 74%)}
+.alrt .h{font-family:'Barlow Condensed',sans-serif;letter-spacing:.09em;
+  text-transform:uppercase;font-size:13.5px;color:var(--amber);margin-bottom:4px}
+.alrt.red .h{color:var(--red)}
+.alrt .b{font-size:12.5px;line-height:1.5;color:#AEB6C4}
+.alrt .w{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);
+  margin-top:5px}
+.empty{font-size:13px;color:var(--muted);padding:4px 0 8px;margin:0}
+
+#hmap{height:34vh;min-height:200px;border:1px solid var(--rule);border-radius:9px;
+  background:var(--surface);margin-top:4px}
+.hist{border-left:3px solid var(--muted);padding:10px 0 10px 13px;margin-bottom:9px;
+  background:linear-gradient(90deg,rgba(133,144,160,.07),transparent 74%);
+  border-radius:0 7px 7px 0}
+.hist.acc{border-left-color:var(--red)} .hist.sos{border-left-color:var(--amber)}
+.hist .t{font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink)}
+.hist.acc .t{color:var(--red)} .hist.sos .t{color:var(--amber)}
+.hist .c{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#AEB6C4;margin-top:4px}
+.hist .w{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);margin-top:4px}
+.hist a{color:var(--amber);text-decoration:none;font-size:11.5px}
+
+.sel{width:100%;background:var(--surface);border:1px solid var(--rule);border-radius:7px;
+  color:var(--ink);padding:13px 12px;font-size:14.5px;
+  font-family:'IBM Plex Sans',sans-serif;outline:none;-webkit-appearance:none;
+  appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,#8590A0 50%),
+                   linear-gradient(135deg,#8590A0 50%,transparent 50%);
+  background-position:calc(100% - 19px) 21px,calc(100% - 14px) 21px;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+.setdesc{font-size:12.5px;line-height:1.55;color:var(--muted);margin:0 0 11px}
+
+.hero{padding:20px 20px 0}
+.hero h3{font-family:'Barlow Condensed',sans-serif;font-size:23px;letter-spacing:.04em;
+  text-transform:uppercase;margin:0 0 10px;
+  background:linear-gradient(92deg,#22D3EE,#22C55E);-webkit-background-clip:text;
+  background-clip:text;color:transparent}
+.step{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid rgba(42,47,58,.6)}
+.step:last-child{border-bottom:none}
+.step .num{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--amber);
+  flex:none;width:20px;padding-top:2px}
+.step .txt{font-size:13px;line-height:1.55;color:#AEB6C4}
+.step .txt b{color:var(--ink);font-weight:500}
+
+#toast{position:fixed;left:0;right:0;
+  bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px) + 10px);z-index:80;
+  pointer-events:none;max-width:640px;margin:0 auto;padding:0 20px}
+.tst{background:var(--surface2);border:1px solid var(--rule);
+  border-left:3px solid var(--amber);padding:12px 14px;font-size:12.5px;
+  line-height:1.45;margin-top:8px;border-radius:0 8px 8px 0;
+  animation:pop .4s var(--ease);box-shadow:0 14px 36px rgba(0,0,0,.55)}
+.tst b{font-family:'Barlow Condensed',sans-serif;letter-spacing:.1em;
+  text-transform:uppercase;font-size:12px;color:var(--amber);display:block;
+  margin-bottom:3px}
+.tst.red{border-left-color:var(--red)} .tst.red b{color:var(--red)}
+.tst.ok{border-left-color:var(--green)} .tst.ok b{color:var(--green)}
+@keyframes pop{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+footer{margin:22px 20px 0;padding-top:13px;border-top:1px solid var(--rule);
+  font-size:11px;line-height:1.7;color:#69707D}
+footer b{color:var(--muted);font-weight:500}
+@media (min-width:900px){
+  :root{ --tabh:0px; }
+  .shell{max-width:1240px;padding:76px 0 60px}
+  .tabbar{top:0;bottom:auto;height:76px;padding-bottom:0;max-width:none;width:100%;
+    border-top:none;border-bottom:1px solid var(--rule);justify-content:center;
+    gap:4px;padding:0 32px}
+  body.danger .tabbar{border-top:none;border-bottom-color:var(--red)}
+  .tab{flex:0 0 auto;flex-direction:row;gap:10px;padding:0 24px;height:76px;
+    align-items:center}
+  .tab svg{width:18px;height:18px}
+  .tab span{font-size:13px;letter-spacing:.12em}
+  .tab.on::before{top:auto;bottom:0;left:12%;right:12%;border-radius:3px 3px 0 0}
+  .tab .pip{top:24px;right:12px}
+  .hazard{top:76px}
+  header{padding:26px 32px 0}
+  .mark{font-size:18px}
+  h1{font-size:62px}
+  .sub{font-size:16px;max-width:46ch}
+  .gauge{width:116px;height:116px}
+  .gauge .n{font-size:28px}
+
+  #page-home{display:grid;grid-template-columns:1.15fr .85fr;
+    grid-template-areas:"status stats" "status actions" "feed feed" "foot foot";
+    gap:0 34px;padding:0 32px;align-items:start}
+  #page-home.active{display:grid}
+  #page-home>.status{grid-area:status;padding:34px 0 0;gap:28px}
+  #page-home>.grid{grid-area:stats;padding:34px 0 0}
+  #page-home>.actions{grid-area:actions;padding:16px 0 0}
+  #page-home>.panel{grid-area:feed;margin:30px 0 0}
+  #page-home>footer{grid-area:foot;margin:24px 0 0;max-width:80ch}
+
+  #page-nav{display:grid;grid-template-columns:.85fr 1.15fr;
+    grid-template-areas:"trip map" "sum map" "navb map" "acts map" "zones steps";
+    gap:0 32px;padding:0 32px;align-items:start}
+  #page-nav.active{display:grid}
+  #page-nav>.panel.tripHead{grid-area:trip;margin:30px 0 0}
+  #page-nav>.summary{grid-area:sum;margin:14px 0 0}
+  #page-nav>.navbox{grid-area:navb;margin:14px 0 0}
+  #page-nav>.actions{grid-area:acts;padding:14px 0 0}
+  #page-nav>.mapwrap{grid-area:map;padding:30px 0 0}
+  #page-nav>.panel.zonesP{grid-area:zones;margin:24px 0 0}
+  #page-nav>.panel.stepsP{grid-area:steps;margin:24px 0 0}
+  #map{height:66vh;min-height:460px}
+
+  #page-alerts{padding:0 32px;max-width:920px}
+  #page-alerts>.panel{margin:30px 0 0}
+  #page-history{padding:0 32px}
+  #page-history>.panel{margin:30px 0 0}
+  #hmap{height:44vh;min-height:320px}
+  #page-settings{display:grid;grid-template-columns:1fr 1fr;gap:0 34px;
+    padding:0 32px;align-items:start}
+  #page-settings.active{display:grid}
+  #page-settings>.panel:first-child{margin:30px 0 0}
+  #page-settings>.panel:nth-of-type(2){margin:30px 0 0;border-top:none;padding-top:13px}
+  #page-settings>.actions{grid-column:1/-1;padding:16px 0 0;max-width:340px}
+  #page-settings>.hero{grid-column:1/-1;padding:26px 0 0}
+  #page-settings>footer{grid-column:1/-1}
+  #toast{bottom:24px;right:0;left:auto;max-width:430px;padding:0 32px;margin:0}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="shell">
+<div class="hazard"></div>
+
+<header>
+  <div class="mark">Road Safety Navigator<span>Live incident routing</span></div>
+  <div class="plate" id="plate">TN 56 CC 2343</div>
+</header>
+
+<!-- ================= HOME ================= -->
+<section class="page active" id="page-home">
+  <div class="status" aria-live="polite">
+    <div class="stxt">
+      <div class="eyebrow"><span class="dot"></span><span id="eyebrow">Standing by</span></div>
+      <h1 id="headline">Road clear</h1>
+      <p class="sub" id="subline">Start monitoring to be warned when you approach a recent accident site.</p>
+    </div>
+    <div class="gauge">
+      <svg width="92" height="92" viewBox="0 0 96 96" aria-hidden="true">
+        <circle class="trk" cx="48" cy="48" r="42"></circle>
+        <circle class="arc" id="arc" cx="48" cy="48" r="42"
+                stroke-dasharray="263.9" stroke-dashoffset="263.9"></circle>
+      </svg>
+      <div class="lbl"><span class="n" id="bigdist">--</span><span class="u">metres</span></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="stat c4"><div class="k">Active zones</div><div class="v" id="s-zones">0</div></div>
+    <div class="stat c2"><div class="k">Nearest</div><div class="v" id="s-near">--</div></div>
+    <div class="stat c3"><div class="k">Vehicle GPS</div><div class="v sm" id="s-gps">Waiting</div></div>
+    <div class="stat c1"><div class="k">Alerts</div><div class="v" id="s-alerts">0</div></div>
+  </div>
+
+  <div class="actions">
+    <button class="act b-primary" id="enable">Start monitoring</button>
+    <button class="act b-ghost" id="sim">Simulate entering zone</button>
+  </div>
+
+  <div class="panel">
+    <h2>Latest activity</h2>
+    <div id="homefeed"><p class="empty">Nothing reported yet. Roads are clear.</p></div>
+  </div>
+
+  <footer>
+    <b>How this works.</b> When the vehicle detects a crash, that location is marked
+    as an accident prone zone. Plan a journey on the Navigate tab and any zone on
+    your route is flagged in advance with a spoken warning as you approach.
+  </footer>
+</section>
+
+<!-- ================= NAVIGATE ================= -->
+<section class="page" id="page-nav">
+
+  <div class="panel first tripHead">
+    <h2>Plan a journey</h2>
+    <div class="trip">
+      <div class="field">
+        <span class="pin a"></span>
+        <input id="fromIn" type="text" placeholder="Starting point" autocomplete="off"
+               enterkeyhint="search">
+        <button class="mini" id="useLoc">Locate me</button>
+      </div>
+      <div id="fromSug" class="sug" style="display:none"></div>
+
+      <div class="swap"><button id="swapBtn" title="Swap">
+        <svg viewBox="0 0 24 24"><path d="M7 4v16M7 20l-3.5-3.5M7 20l3.5-3.5"/>
+        <path d="M17 20V4M17 4l-3.5 3.5M17 4l3.5 3.5"/></svg></button></div>
+
+      <div class="field">
+        <span class="pin b"></span>
+        <input id="toIn" type="text" placeholder="Destination" autocomplete="off"
+               enterkeyhint="go">
+        <button class="mini" id="pickTo">Pick on map</button>
+      </div>
+      <div id="toSug" class="sug" style="display:none"></div>
+
+      <p class="tiphint" id="tipHint">Type a place and press Enter, or tap
+      Pick on map and touch any point.</p>
+    </div>
+  </div>
+
+  <div class="pickbar" id="pickBar">
+    <div class="m"><b>Pick on map</b><span id="pickMsg">Touch any point on the map below.</span></div>
+    <button id="pickCancel">Cancel</button>
+  </div>
+
+  <div class="chips" id="routeChips" style="display:none"></div>
+
+  <div class="summary" id="sumBox">
+    <div class="sumrow">
+      <div class="sumitem"><div class="k">Distance</div><div class="v" id="sumDist">--</div></div>
+      <div class="sumitem"><div class="k">Duration</div><div class="v" id="sumTime">--</div></div>
+      <div class="sumitem"><div class="k">Zones on route</div><div class="v" id="sumZones">0</div></div>
+    </div>
+    <div class="sumnote" id="sumNote">Route calculated.</div>
+  </div>
+
+  <div class="navbox" id="navBox">
+    <div class="lab" id="navLab">Navigation active</div>
+    <div class="big g" id="navBig">Road clear</div>
+    <div class="det" id="navDet">No accident zones ahead on this route.</div>
+    <div class="mono" id="navMono"></div>
+  </div>
+
+  <div class="actions">
+    <button class="act b-primary" id="routeBtn">Get route</button>
+    <button class="act b-go" id="startNav" style="display:none">Start navigation</button>
+    <button class="act b-stop" id="stopNav" style="display:none">Stop navigation</button>
+    <a class="linkbtn b-nav" id="gmapBtn" href="#" target="_blank" style="display:none">Open in Google Maps</a>
+  </div>
+
+  <div class="mapstyle">
+    <button class="msbtn on" data-style="streets">Streets</button>
+    <button class="msbtn" data-style="classic">Classic</button>
+    <button class="msbtn" data-style="satellite">Satellite</button>
+    <button class="msbtn" data-style="dark">Dark</button>
+  </div>
+
+  <div class="mapwrap"><div id="map"></div></div>
+
+  <div class="panel zonesP">
+    <h2>Accident zones on this route <span class="count" id="rzCount">0</span></h2>
+    <div id="routeZones"><p class="empty">Plan a route to see which accident zones lie along it.</p></div>
+  </div>
+
+  <div class="panel stepsP">
+    <h2>Turn by turn directions</h2>
+    <button class="foldbtn" id="stepsToggle" style="display:none">Show all directions</button>
+    <div id="stepList" class="fold"></div>
+    <p class="empty" id="stepsEmpty">Directions appear once a route is calculated.</p>
+  </div>
+</section>
+<!-- ================= ALERTS ================= -->
+<section class="page" id="page-alerts">
+  <div class="panel first">
+    <h2>Alert messages <span class="count" id="acount">0</span></h2>
+    <div id="alertlist"><p class="empty">No alerts yet. Messages sent to the family group appear here.</p></div>
+  </div>
+  <footer>
+    <b>About these alerts.</b> Every message here was also sent to the family
+    Telegram group and as a push notification. The list keeps the eight most recent.
+  </footer>
+</section>
+
+<!-- ================= HISTORY ================= -->
+<section class="page" id="page-history">
+  <div class="panel first">
+    <h2>Incident record <span class="count" id="hcount">0</span></h2>
+    <div class="grid" style="padding:0 0 14px">
+      <div class="stat c4"><div class="k">Total logged</div><div class="v" id="h-total">0</div></div>
+      <div class="stat c2"><div class="k">Last 7 days</div><div class="v" id="h-week">0</div></div>
+    </div>
+    <div class="mapwrap" style="padding:0"><div id="hmap"></div></div>
+  </div>
+  <div class="panel">
+    <h2>All recorded incidents</h2>
+    <div id="histlist"><p class="empty">No incidents recorded yet.</p></div>
+  </div>
+  <footer>
+    <b>Permanent record.</b> Every incident is kept here even after its warning
+    zone expires. Repeated markers in one area identify a genuinely dangerous
+    stretch of road.
+  </footer>
+</section>
+
+<!-- ================= SETTINGS ================= -->
+<section class="page" id="page-settings">
+  <div class="panel first">
+    <h2>Warning zone duration</h2>
+    <p class="setdesc">How long a location stays marked as accident prone after a
+    crash. Applies to new incidents only.</p>
+    <select id="setLife" class="sel">
+      <option value="120">2 minutes</option>
+      <option value="300" selected>5 minutes</option>
+      <option value="900">15 minutes</option>
+      <option value="1800">30 minutes</option>
+      <option value="3600">1 hour</option>
+      <option value="21600">6 hours</option>
+      <option value="43200">12 hours</option>
+      <option value="86400">1 day</option>
+      <option value="259200">3 days</option>
+      <option value="604800">7 days</option>
+      <option value="1296000">15 days</option>
+    </select>
+  </div>
+
+  <div class="panel">
+    <h2>Warning radius</h2>
+    <p class="setdesc">How close a rider must be before the alarm sounds.</p>
+    <select id="setRad" class="sel">
+      <option value="10">10 metres</option>
+      <option value="20" selected>20 metres</option>
+      <option value="50">50 metres</option>
+      <option value="100">100 metres</option>
+      <option value="200">200 metres</option>
+      <option value="500">500 metres</option>
+    </select>
+  </div>
+
+  <div class="actions" style="padding:16px 20px 0">
+    <button class="act b-primary" id="saveCfg">Save settings</button>
+  </div>
+
+  <div class="panel">
+    <h2>Monitored vehicle</h2>
+    <div class="row"><span class="k">Rider</span><span class="v" id="vrider">--</span></div>
+    <div class="row"><span class="k">Vehicle</span><span class="v" id="vplate">--</span></div>
+    <div class="row"><span class="k">Last position</span><span class="v" id="vpos">--</span></div>
+    <div class="row"><span class="k">Satellites</span><span class="v" id="vsat">--</span></div>
+    <div class="row"><span class="k">Last update</span><span class="v" id="vage">--</span></div>
+  </div>
+
+  <div class="panel">
+    <h2>System status</h2>
+    <div class="row"><span class="k">Database</span><span class="v" id="d-db">Checking</span></div>
+    <div class="row"><span class="k">Alarm sound</span><span class="v" id="d-snd">Not enabled</span></div>
+    <div class="row"><span class="k">Notifications</span><span class="v" id="d-not">Not enabled</span></div>
+    <div class="row"><span class="k">Voice warnings</span><span class="v" id="d-voice">Ready</span></div>
+    <div class="row"><span class="k">Active radius</span><span class="v" id="d-rad">20 m</span></div>
+    <div class="row"><span class="k">Active duration</span><span class="v" id="d-life">5 min</span></div>
+  </div>
+
+  <div class="hero">
+    <h3>How the system works</h3>
+    <div class="step"><div class="num">01</div><div class="txt">
+      <b>Detection.</b> An accelerometer measures impact force and lean angle, and a
+      vibration sensor detects shock. A crash triggers on high G-force, a sustained
+      tilt past 45 degrees, or repeated heavy vibration.</div></div>
+    <div class="step"><div class="num">02</div><div class="txt">
+      <b>Confirmation.</b> A buzzer sounds for 20 seconds. If the rider is conscious
+      they press the button and the alert is cancelled.</div></div>
+    <div class="step"><div class="num">03</div><div class="txt">
+      <b>Alert.</b> With no response, the location and time go to the family Telegram
+      group with ride booking links, and as a push notification.</div></div>
+    <div class="step"><div class="num">04</div><div class="txt">
+      <b>Zone.</b> That spot becomes an accident prone zone for the duration set above.</div></div>
+    <div class="step"><div class="num">05</div><div class="txt">
+      <b>Route warning.</b> Plan a journey and any zone along the road is flagged
+      before you leave. While navigating, the app speaks a warning at 1 km, 500 m
+      and 200 m before each zone.</div></div>
+  </div>
+
+  <footer>
+    <b>Sound and voice.</b> Tap Start monitoring on the home page once. Phones block
+    audio until you do. Routing uses the free OSRM service and place search uses
+    OpenStreetMap. No paid service is used anywhere in this app.
+  </footer>
+</section>
+
+</div>
+
+<div id="toast"></div>
+
+<nav class="tabbar">
+  <button class="tab on" data-page="home">
+    <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/><path d="M9.5 20v-6h5v6"/></svg>
+    <span>Home</span></button>
+  <button class="tab" data-page="nav">
+    <svg viewBox="0 0 24 24"><path d="M12 2 4.5 21 12 17.5 19.5 21 12 2z"/></svg>
+    <span>Navigate</span></button>
+  <button class="tab" data-page="alerts">
+    <span class="pip" id="alertpip"></span>
+    <svg viewBox="0 0 24 24"><path d="M18 8.5a6 6 0 1 0-12 0c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg>
+    <span>Alerts</span></button>
+  <button class="tab" data-page="history">
+    <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7.5V12l3 2"/></svg>
+    <span>History</span></button>
+  <button class="tab" data-page="settings">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>
+    <span>Setup</span></button>
+</nav>
+<script>
+var FIREBASE_URL = "https://bike-safety-24bd6-default-rtdb.asia-southeast1.firebasedatabase.app";
+var OSRM = "https://router.project-osrm.org/route/v1/driving/";
+var NOMI = "https://nominatim.openstreetmap.org/search?format=json&limit=5&q=";
+
+var map, meMarker, vehMarker, layers = [], routeLine = null, routeGlow = null;
+var fromPin = null, toPin = null, routeZoneMarks = [];
+var zones = [], myLat = null, myLng = null;
+var audioCtx = null, alarmOn = false, alarmTimer = null;
+var inZone = false, simulate = false;
+var seenZones = {}, seenAlerts = {}, firstAlertLoad = true;
+var wakeLock = null, shownDist = 0, titleFlip = null, swReg = null;
+var currentPage = 'home', histCache = [], cfgLoaded = false, navAutoLoc = false;
+var RING = 263.9;
+
+var fromPt = null, toPt = null;
+var routeCoords = [], routeCum = [], routeSteps = [];
+var routeZones = [], navActive = false, navWatch = null;
+var announced = {};
+
+/* ================= PAGE SWITCHING ================= */
+function showPage(name){
+  var ps=document.querySelectorAll('.page');
+  for(var i=0;i<ps.length;i++) ps[i].classList.remove('active');
+  var t=document.getElementById('page-'+name);
+  if(t) t.classList.add('active');
+  var tb=document.querySelectorAll('.tab');
+  for(var j=0;j<tb.length;j++){
+    if(tb[j].getAttribute('data-page')===name) tb[j].classList.add('on');
+    else tb[j].classList.remove('on');
+  }
+  currentPage=name; window.scrollTo(0,0);
+  if(name==='nav' && map){
+    setTimeout(function(){ map.invalidateSize(); },130);
+    if(!navAutoLoc){
+      navAutoLoc=true;
+      if(navigator.geolocation && !fromPt){
+        navigator.geolocation.getCurrentPosition(function(p){
+          if(fromPt) return;
+          fromPt={lat:p.coords.latitude,lng:p.coords.longitude,name:'My location'};
+          document.getElementById('fromIn').value='My location';
+          drawEnds();
+          reverseName(p.coords.latitude,p.coords.longitude).then(function(n){
+            if(fromPt && fromPt.name==='My location'){
+              fromPt.name=n;
+              document.getElementById('fromIn').value=n;
+            }
+          });
+        },function(){},{enableHighAccuracy:false,timeout:9000,maximumAge:60000});
+      }
+    }
+  }
+  if(name==='history'){ initHistoryMap();
+    setTimeout(function(){ if(hmap) hmap.invalidateSize(); renderHistory(histCache); },140); }
+  if(name==='alerts'){ document.getElementById('alertpip').classList.remove('show'); }
+}
+var tabBtns=document.querySelectorAll('.tab');
+for(var t=0;t<tabBtns.length;t++){
+  tabBtns[t].addEventListener('click',function(){ showPage(this.getAttribute('data-page')); });
+}
+
+/* ================= MAP ================= */
+map=L.map('map',{zoomControl:false}).setView([9.9252,78.1198],13);
+L.control.zoom({position:'bottomright'}).addTo(map);
+
+/* ---------- map styles ---------- */
+var MAP_STYLES = {
+  streets:{
+    url:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    attr:'&copy; OpenStreetMap, &copy; CARTO', max:19, light:true
+  },
+  classic:{
+    url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attr:'&copy; OpenStreetMap contributors', max:19, light:true
+  },
+  satellite:{
+    url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attr:'Imagery &copy; Esri', max:18, light:false
+  },
+  dark:{
+    url:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attr:'&copy; OpenStreetMap, &copy; CARTO', max:19, light:false
+  }
+};
+
+/* Line and marker colours change so they stay visible on any base map */
+var PALETTE = {
+  light:{ route:'#1A73E8', casing:'#FFFFFF', alt:'#80868B',
+          zone:'#D93025', zoneFill:.28, start:'#1A73E8', end:'#D93025',
+          veh:'#F9AB00', me:'#1A73E8', meRing:'#FFFFFF' },
+  dark:{  route:'#22D3EE', casing:'#0E1015', alt:'#8590A0',
+          zone:'#EF4444', zoneFill:.20, start:'#22D3EE', end:'#EF4444',
+          veh:'#FBBF24', me:'#F4F2EC', meRing:'#0E1015' }
+};
+
+var mapStyle='streets', baseLayer=null, hBaseLayer=null;
+function pal(){ return MAP_STYLES[mapStyle].light ? PALETTE.light : PALETTE.dark; }
+
+function applyMapStyle(name,firstRun){
+  if(!MAP_STYLES[name]) name='streets';
+  mapStyle=name;
+  var cfg=MAP_STYLES[name];
+
+  if(baseLayer) map.removeLayer(baseLayer);
+  baseLayer=L.tileLayer(cfg.url,{maxZoom:cfg.max,attribution:cfg.attr}).addTo(map);
+  if(baseLayer.setZIndex) baseLayer.setZIndex(0);
+
+  var c=map.getContainer();
+  if(cfg.light) c.classList.add('light'); else c.classList.remove('light');
+
+  if(hmap){
+    if(hBaseLayer) hmap.removeLayer(hBaseLayer);
+    hBaseLayer=L.tileLayer(cfg.url,{maxZoom:cfg.max,attribution:cfg.attr}).addTo(hmap);
+    var hc=hmap.getContainer();
+    if(cfg.light) hc.classList.add('light'); else hc.classList.remove('light');
+  }
+
+  var btns=document.querySelectorAll('.msbtn');
+  for(var i=0;i<btns.length;i++){
+    if(btns[i].getAttribute('data-style')===name) btns[i].classList.add('on');
+    else btns[i].classList.remove('on');
+  }
+
+  try{ localStorage.setItem('rsn_mapstyle',name); }catch(e){}
+
+  if(!firstRun) redrawOverlays();
+}
+
+/* Redraw everything that sits on top of the tiles in the new colours */
+function redrawOverlays(){
+  drawEnds();
+  if(allRoutes.length) selectRoute(activeRoute);
+  refreshZoneCircles();
+  if(hmap) renderHistory(histCache);
+  if(meMarker && myLat!==null){
+    map.removeLayer(meMarker); meMarker=null;
+  }
+  check();
+}
+
+var savedStyle='streets';
+try{ savedStyle=localStorage.getItem('rsn_mapstyle')||'streets'; }catch(e){}
+applyMapStyle(savedStyle,true);
+
+var msBtns=document.querySelectorAll('.msbtn');
+for(var q=0;q<msBtns.length;q++){
+  msBtns[q].addEventListener('click',function(){
+    applyMapStyle(this.getAttribute('data-style'),false);
+  });
+}
+
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(function(r){swReg=r;}).catch(function(){});
+}
+
+/* ================= GEOMETRY ================= */
+function dist(a1,o1,a2,o2){
+  var R=6371000,dA=(a2-a1)*Math.PI/180,dO=(o2-o1)*Math.PI/180;
+  var x=Math.sin(dA/2)*Math.sin(dA/2)+Math.cos(a1*Math.PI/180)*
+        Math.cos(a2*Math.PI/180)*Math.sin(dO/2)*Math.sin(dO/2);
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+/* nearest point on the route to a coordinate; returns {d, idx} */
+function nearestOnRoute(lat,lng){
+  var best=Infinity, bi=0;
+  for(var i=0;i<routeCoords.length;i++){
+    var d=dist(lat,lng,routeCoords[i][0],routeCoords[i][1]);
+    if(d<best){best=d; bi=i;}
+  }
+  return {d:best, idx:bi};
+}
+function fmtKm(m){
+  if(m<1000) return Math.round(m)+' m';
+  return (m/1000).toFixed(m<10000?1:0)+' km';
+}
+function fmtMin(s){
+  var h=Math.floor(s/3600), m=Math.round((s%3600)/60);
+  if(h>0) return h+' h '+m+' min';
+  return m+' min';
+}
+
+/* ================= AUDIO + VOICE ================= */
+function tone(f1,f2,dur,vol){
+  if(!audioCtx) return;
+  try{
+    var o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.type='square';
+    o.frequency.setValueAtTime(f1,audioCtx.currentTime);
+    o.frequency.setValueAtTime(f2,audioCtx.currentTime+dur*0.5);
+    g.gain.setValueAtTime(vol,audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime+dur+0.02);
+  }catch(e){}
+}
+function speak(text){
+  try{
+    if(!window.speechSynthesis) return;
+    var u=new SpeechSynthesisUtterance(text);
+    u.rate=1.0; u.pitch=1; u.volume=1;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  }catch(e){}
+}
+function warnVoice(){ speak('Accident zone ahead. Please go slow.'); }
+
+function alarmStep(d){
+  tone(940,700,0.3,0.32);
+  if(navigator.vibrate) navigator.vibrate([250,110,250]);
+  var gap=d<6?620:d<12?900:1300;
+  alarmTimer=setTimeout(function(){ if(alarmOn) alarmStep(shownDist); },gap);
+}
+function startAlarm(d){
+  if(alarmOn) return;
+  alarmOn=true; alarmStep(d);
+  titleFlip=setInterval(function(){
+    document.title=document.title.charAt(0)==='!'?'Road Safety Navigator':'! DANGER ZONE !';
+  },900);
+}
+function stopAlarm(){
+  alarmOn=false;
+  if(alarmTimer){clearTimeout(alarmTimer);alarmTimer=null;}
+  if(titleFlip){clearInterval(titleFlip);titleFlip=null;}
+  document.title='Road Safety Navigator';
+  try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+}
+
+/* ================= NOTIFICATIONS ================= */
+function askNotify(){
+  try{
+    if(!('Notification' in window)) return;
+    var el=document.getElementById('d-not');
+    if(Notification.permission==='default'){
+      Notification.requestPermission().then(function(p){
+        el.textContent=(p==='granted')?'Enabled':'Blocked'; });
+    } else el.textContent=(Notification.permission==='granted')?'Enabled':'Blocked';
+  }catch(e){}
+}
+function notify(title,body,urgent){
+  try{
+    if(!('Notification' in window)) return;
+    if(Notification.permission!=='granted') return;
+    var o={body:body,icon:'icon.svg',badge:'icon.svg',
+      vibrate:urgent?[300,120,300,120,300]:[200,100,200],
+      tag:'safety-'+Date.now(),requireInteraction:!!urgent};
+    if(swReg && swReg.showNotification) swReg.showNotification(title,o);
+    else new Notification(title,o);
+  }catch(e){}
+}
+function toast(title,msg,kind){
+  var box=document.getElementById('toast');
+  var d=document.createElement('div');
+  d.className='tst'+(kind?(' '+kind):'');
+  d.innerHTML='<b>'+title+'</b>'+msg;
+  box.appendChild(d);
+  setTimeout(function(){
+    d.style.transition='opacity .4s,transform .4s';
+    d.style.opacity='0'; d.style.transform='translateY(8px)';
+    setTimeout(function(){ if(d.parentNode) d.parentNode.removeChild(d); },420);
+  },5500);
+}
+/* ================= PLACE SEARCH ================= */
+/* Works worldwide. Results near you are ranked first. */
+
+var myHomeLat=null, myHomeLng=null;         /* used to bias and sort results */
+var RECENT_KEY='rsn_recent';
+
+function loadRecent(){
+  try{ return JSON.parse(localStorage.getItem(RECENT_KEY)||'[]'); }catch(e){ return []; }
+}
+function saveRecent(p){
+  try{
+    var r=loadRecent();
+    r=r.filter(function(x){ return x.name!==p.name; });
+    r.unshift({name:p.name,lat:p.lat,lng:p.lng});
+    if(r.length>6) r=r.slice(0,6);
+    localStorage.setItem(RECENT_KEY,JSON.stringify(r));
+  }catch(e){}
+}
+
+/* Ask for position once, quietly, to bias searches near the user */
+function primeHome(){
+  if(myHomeLat!==null || !navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(function(p){
+    myHomeLat=p.coords.latitude; myHomeLng=p.coords.longitude;
+  },function(){},{enableHighAccuracy:false,timeout:8000,maximumAge:300000});
+}
+primeHome();
+
+/* Friendly label for what kind of place a result is */
+function placeKind(r){
+  var c=r.class||'', t=r.type||'';
+  if(c==='highway') return {t:'Road',cls:'road'};
+  if(c==='amenity'||c==='shop'||c==='tourism'||c==='leisure'||c==='healthcare')
+    return {t:t.replace(/_/g,' '),cls:'poi'};
+  if(c==='place'){
+    if(t==='city'||t==='town') return {t:t,cls:''};
+    if(t==='village'||t==='hamlet') return {t:t,cls:''};
+    if(t==='suburb'||t==='neighbourhood') return {t:'area',cls:'area'};
+    return {t:t,cls:''};
+  }
+  if(c==='boundary') return {t:'district',cls:'area'};
+  if(c==='railway') return {t:'station',cls:'poi'};
+  if(c==='aeroway') return {t:'airport',cls:'poi'};
+  return {t:(t||'place').replace(/_/g,' '),cls:''};
+}
+
+/* Search worldwide, biased toward the user's area */
+function searchPlaces(q){
+  var url=NOMI+encodeURIComponent(q)+'&addressdetails=1&limit=8';
+  if(myHomeLat!==null){
+    var d=1.6;   /* about 175 km box - prefer nearby, do not restrict */
+    url+='&viewbox='+(myHomeLng-d)+','+(myHomeLat+d)+','+
+                     (myHomeLng+d)+','+(myHomeLat-d);
+  }
+  return fetch(url).then(function(r){return r.json();}).then(function(list){
+    if(!list) return [];
+    var out=[];
+    for(var i=0;i<list.length;i++){
+      var r=list[i];
+      var la=parseFloat(r.lat), ln=parseFloat(r.lon);
+      if(isNaN(la)) continue;
+      var away=null;
+      if(myHomeLat!==null) away=dist(myHomeLat,myHomeLng,la,ln);
+      out.push({lat:la,lng:ln,full:r.display_name,
+                name:r.display_name.split(',').slice(0,2).join(','),
+                kind:placeKind(r), away:away,
+                imp:parseFloat(r.importance||0)});
+    }
+    /* rank: near results first, then by how well known the place is */
+    out.sort(function(a,b){
+      if(a.away!==null && b.away!==null){
+        var an=a.away<60000?0:a.away<300000?1:2;
+        var bn=b.away<60000?0:b.away<300000?1:2;
+        if(an!==bn) return an-bn;
+      }
+      return b.imp-a.imp;
+    });
+    return out;
+  }).catch(function(){ return []; });
+}
+
+function geocodeBest(text){
+  return searchPlaces(text).then(function(l){ return l.length?l[0]:null; });
+}
+
+function reverseName(lat,lng){
+  var u='https://nominatim.openstreetmap.org/reverse?format=json&lat='+lat+'&lon='+lng;
+  return fetch(u).then(function(r){return r.json();})
+    .then(function(d){
+      if(d && d.display_name) return d.display_name.split(',').slice(0,2).join(',');
+      return lat.toFixed(4)+', '+lng.toFixed(4);
+    })
+    .catch(function(){ return lat.toFixed(4)+', '+lng.toFixed(4); });
+}
+
+function resultHTML(p){
+  var away = p.away===null ? '' :
+    '<span class="away">'+(p.away<1000?Math.round(p.away)+' m':
+      (p.away/1000).toFixed(p.away<100000?1:0)+' km')+' away</span>';
+  return '<div data-lat="'+p.lat+'" data-lng="'+p.lng+'" data-name="'+
+    p.name.replace(/"/g,'&quot;')+'">'+
+    '<div class="nm">'+p.full+'</div>'+
+    '<div class="meta"><span class="badge '+p.kind.cls+'">'+p.kind.t+'</span>'+away+'</div></div>';
+}
+
+function attachSearch(inputId, sugId, setter){
+  var inp=document.getElementById(inputId), sug=document.getElementById(sugId), tmr=null;
+
+  function pick(la,ln,label){
+    inp.value=label;
+    sug.style.display='none';
+    var p={lat:la,lng:ln,name:label};
+    setter(p); saveRecent(p); drawEnds();
+  }
+
+  function wire(){
+    var items=sug.querySelectorAll('div[data-lat]');
+    for(var j=0;j<items.length;j++){
+      items[j].addEventListener('click',function(){
+        var la=parseFloat(this.getAttribute('data-lat'));
+        var ln=parseFloat(this.getAttribute('data-lng'));
+        if(isNaN(la)) return;
+        pick(la,ln,this.getAttribute('data-name'));
+      });
+    }
+  }
+
+  /* show recent searches and current location when the box is empty */
+  function showQuick(){
+    var h='';
+    if(navigator.geolocation && inputId==='fromIn'){
+      h+='<div class="sechead">Quick</div>'+
+         '<div data-lat="LOC" data-lng="LOC" data-name="My location">'+
+         '<div class="nm">Use my current location</div>'+
+         '<div class="meta"><span class="badge area">GPS</span></div></div>';
+    }
+    var rec=loadRecent();
+    if(rec.length){
+      h+='<div class="sechead">Recent</div>';
+      for(var i=0;i<rec.length;i++){
+        h+='<div data-lat="'+rec[i].lat+'" data-lng="'+rec[i].lng+
+           '" data-name="'+rec[i].name.replace(/"/g,'&quot;')+'">'+
+           '<div class="nm">'+rec[i].name+'</div>'+
+           '<div class="meta"><span class="badge">recent</span></div></div>';
+      }
+    }
+    if(!h) return;
+    sug.innerHTML=h; sug.style.display='block';
+    var items=sug.querySelectorAll('div[data-lat]');
+    for(var j=0;j<items.length;j++){
+      items[j].addEventListener('click',function(){
+        if(this.getAttribute('data-lat')==='LOC'){
+          sug.style.display='none';
+          document.getElementById('useLoc').click();
+          return;
+        }
+        pick(parseFloat(this.getAttribute('data-lat')),
+             parseFloat(this.getAttribute('data-lng')),
+             this.getAttribute('data-name'));
+      });
+    }
+  }
+
+  inp.addEventListener('focus',function(){
+    primeHome();
+    if(this.value.trim().length<2) showQuick();
+  });
+
+  inp.addEventListener('input',function(){
+    var v=this.value.trim();
+    setter(null);
+    if(tmr) clearTimeout(tmr);
+    if(v.length<2){ showQuick(); return; }
+    tmr=setTimeout(function(){
+      sug.style.display='block';
+      sug.innerHTML='<div class="sechead">Searching...</div>';
+      searchPlaces(v).then(function(list){
+        if(!list.length){
+          sug.innerHTML='<div class="sechead">No places found. Try adding the district or state.</div>';
+          return;
+        }
+        var h='';
+        for(var i=0;i<list.length;i++) h+=resultHTML(list[i]);
+        sug.innerHTML=h; wire();
+      });
+    },550);
+  });
+
+  inp.addEventListener('keydown',function(ev){
+    if(ev.key!=='Enter') return;
+    ev.preventDefault();
+    var v=this.value.trim();
+    if(v.length<2) return;
+    if(tmr) clearTimeout(tmr);
+    sug.style.display='none'; inp.blur();
+    var was=inp.value; inp.value='Finding '+was+'...';
+    geocodeBest(v).then(function(p){
+      if(p) pick(p.lat,p.lng,p.name);
+      else{
+        inp.value=was;
+        toast('Place not found','Try adding the district or state, for example Salem Tamil Nadu.','red');
+      }
+    });
+  });
+
+  document.addEventListener('click',function(ev){
+    if(ev.target!==inp && !sug.contains(ev.target)) sug.style.display='none';
+  });
+}
+attachSearch('fromIn','fromSug',function(p){ fromPt=p; });
+attachSearch('toIn','toSug',function(p){ toPt=p; });
+
+function ensurePoint(which){
+  var pt = which==='from' ? fromPt : toPt;
+  if(pt) return Promise.resolve(pt);
+  var inp=document.getElementById(which==='from'?'fromIn':'toIn');
+  var v=inp.value.trim();
+  if(v.length<2) return Promise.resolve(null);
+  return geocodeBest(v).then(function(p){
+    if(!p) return null;
+    inp.value=p.name;
+    if(which==='from') fromPt=p; else toPt=p;
+    saveRecent(p);
+    return p;
+  });
+}
+
+document.getElementById('useLoc').onclick=function(){
+  var btn=this; btn.textContent='Locating';
+  if(!navigator.geolocation){ btn.textContent='Locate me'; return; }
+  navigator.geolocation.getCurrentPosition(function(p){
+    myHomeLat=p.coords.latitude; myHomeLng=p.coords.longitude;
+    fromPt={lat:p.coords.latitude,lng:p.coords.longitude,name:'My location'};
+    document.getElementById('fromIn').value='My location';
+    btn.textContent='Locate me';
+    drawEnds();
+    reverseName(p.coords.latitude,p.coords.longitude).then(function(n){
+      if(fromPt && fromPt.name==='My location'){
+        fromPt.name=n;
+        document.getElementById('fromIn').value=n;
+      }
+    });
+  },function(){
+    btn.textContent='Locate me';
+    toast('Location unavailable','Allow location access, or type a starting point.','red');
+  },{enableHighAccuracy:true,timeout:15000});
+};
+
+/* ---------- pick a point by touching the map ---------- */
+var pickMode=null;
+function startPick(which,label){
+  pickMode=which;
+  document.getElementById('pickMsg').textContent=label;
+  document.getElementById('pickBar').classList.add('show');
+  map.getContainer().style.cursor='crosshair';
+  document.getElementById('map').scrollIntoView({behavior:'smooth',block:'center'});
+}
+function endPick(){
+  pickMode=null;
+  document.getElementById('pickBar').classList.remove('show');
+  map.getContainer().style.cursor='';
+}
+document.getElementById('pickTo').onclick=function(){
+  startPick('to','Touch the destination on the map below.');
+};
+document.getElementById('pickCancel').onclick=endPick;
+
+map.on('click',function(ev){
+  if(!pickMode) return;
+  var la=ev.latlng.lat, ln=ev.latlng.lng, which=pickMode;
+  endPick();
+  var inp=document.getElementById(which==='from'?'fromIn':'toIn');
+  inp.value='Locating that point...';
+  var p={lat:la,lng:ln,name:la.toFixed(4)+', '+ln.toFixed(4)};
+  if(which==='from') fromPt=p; else toPt=p;
+  drawEnds();
+  reverseName(la,ln).then(function(n){ p.name=n; inp.value=n; saveRecent(p); });
+});
+
+function drawEnds(){
+  if(fromPin){ map.removeLayer(fromPin); fromPin=null; }
+  if(toPin){ map.removeLayer(toPin); toPin=null; }
+  var pts=[];
+  if(fromPt){
+    var Pf=pal();
+    fromPin=L.circleMarker([fromPt.lat,fromPt.lng],{radius:9,color:Pf.start,
+      weight:4,fillColor:Pf.casing,fillOpacity:1}).addTo(map)
+      .bindPopup('<b>Start</b><br>'+(fromPt.name||''));
+    pts.push([fromPt.lat,fromPt.lng]);
+  }
+  if(toPt){
+    var Pt=pal();
+    toPin=L.circleMarker([toPt.lat,toPt.lng],{radius:9,color:Pt.end,
+      weight:4,fillColor:Pt.casing,fillOpacity:1}).addTo(map)
+      .bindPopup('<b>Destination</b><br>'+(toPt.name||''));
+    pts.push([toPt.lat,toPt.lng]);
+  }
+  if(pts.length===2) map.fitBounds(pts,{padding:[45,45]});
+  else if(pts.length===1) map.setView(pts[0],13);
+}
+
+/* ================= ROUTING ================= */
+function stepText(st){
+  var m=st.maneuver||{}, type=m.type||'', mod=m.modifier||'', road=st.name||'';
+  var s='';
+  if(type==='depart') s='Head '+(mod||'off');
+  else if(type==='arrive') s='Arrive at destination';
+  else if(type==='turn') s='Turn '+mod;
+  else if(type==='new name') s='Continue';
+  else if(type==='merge') s='Merge '+mod;
+  else if(type==='on ramp') s='Take the ramp '+mod;
+  else if(type==='off ramp') s='Take the exit '+mod;
+  else if(type==='fork') s='Keep '+mod;
+  else if(type==='roundabout'||type==='rotary') s='At the roundabout, take exit '+(m.exit||'');
+  else if(type==='continue') s='Continue '+mod;
+  else s=(type+' '+mod).trim();
+  if(road) s+=' onto '+road;
+  return s.charAt(0).toUpperCase()+s.slice(1);
+}
+
+document.getElementById('routeBtn').onclick=function(){
+  var btn=this;
+  var fv=document.getElementById('fromIn').value.trim();
+  var tv=document.getElementById('toIn').value.trim();
+
+  if(fv.length<2 && tv.length<2){
+    toast('Two places needed','Type a starting point and a destination, then press Enter or tap Get route.','red');
+    return;
+  }
+
+  btn.disabled=true; btn.textContent='Finding places';
+
+  /* resolve whatever is typed, even without picking from the list */
+  Promise.all([ensurePoint('from'), ensurePoint('to')]).then(function(res){
+    var a=res[0], b=res[1];
+
+    if(!a){
+      btn.disabled=false; btn.textContent='Get route';
+      toast('Start not found','Could not find that starting point. Add the district, or tap Locate me.','red');
+      return;
+    }
+    if(!b){
+      btn.disabled=false; btn.textContent='Get route';
+      toast('Destination not found','Could not find that destination. Add the district, or tap Pick on map.','red');
+      return;
+    }
+
+    drawEnds();
+    btn.textContent='Calculating route';
+
+    var url=OSRM+a.lng+','+a.lat+';'+b.lng+','+b.lat+
+            '?alternatives=true&overview=full&geometries=geojson&steps=true';
+    fetch(url).then(function(r){return r.json();}).then(function(d){
+      btn.disabled=false; btn.textContent='Get route';
+      if(!d.routes||!d.routes.length){
+        toast('No route found','No driving road was found between these two places.','red');
+        return;
+      }
+      buildAllRoutes(d.routes);
+      toast('Route ready', a.name+' to '+b.name,'ok');
+    }).catch(function(){
+      btn.disabled=false; btn.textContent='Get route';
+      toast('Routing unavailable','The routing service did not respond. Try again in a moment.','red');
+    });
+  });
+};
+
+var allRoutes=[], activeRoute=0, altLines=[];
+
+/* Prepare every route the server returned, then rank them by safety */
+function buildAllRoutes(list){
+  allRoutes=[];
+  for(var i=0;i<list.length && i<3;i++){
+    var r=list[i];
+    var coords=[], g=r.geometry.coordinates;
+    for(var j=0;j<g.length;j++) coords.push([g[j][1],g[j][0]]);
+
+    var cum=[0], c=0;
+    for(var j=1;j<coords.length;j++){
+      c+=dist(coords[j-1][0],coords[j-1][1],coords[j][0],coords[j][1]);
+      cum.push(c);
+    }
+
+    var steps=[];
+    if(r.legs && r.legs[0] && r.legs[0].steps){
+      var st=r.legs[0].steps;
+      for(var j=0;j<st.length;j++) steps.push({text:stepText(st[j]), d:st[j].distance});
+    }
+
+    allRoutes.push({coords:coords, cum:cum, steps:steps,
+                    distance:r.distance, duration:r.duration, zones:[]});
+  }
+
+  scoreRoutes();
+  selectRoute(safestIndex());
+  renderChips();
+}
+
+/* Count how many accident zones lie on each route */
+function scoreRoutes(){
+  for(var i=0;i<allRoutes.length;i++){
+    var R=allRoutes[i];
+    R.zones=[];
+    for(var k=0;k<zones.length;k++){
+      var z=zones[k], best=Infinity, bi=0;
+      for(var j=0;j<R.coords.length;j++){
+        var d=dist(z.lat,z.lng,R.coords[j][0],R.coords[j][1]);
+        if(d<best){ best=d; bi=j; }
+      }
+      if(best<=ROUTE_CORRIDOR){
+        R.zones.push({z:z, offRoad:best, along:R.cum[bi], idx:bi});
+      }
+    }
+    R.zones.sort(function(a,b){ return a.along-b.along; });
+  }
+}
+
+/* Prefer the route with fewest zones; break ties on travel time */
+function safestIndex(){
+  var best=0;
+  for(var i=1;i<allRoutes.length;i++){
+    var a=allRoutes[i], b=allRoutes[best];
+    if(a.zones.length<b.zones.length) best=i;
+    else if(a.zones.length===b.zones.length && a.duration<b.duration) best=i;
+  }
+  return best;
+}
+
+function renderChips(){
+  var box=document.getElementById('routeChips');
+  if(allRoutes.length<2){ box.style.display='none'; return; }
+  box.style.display='flex';
+  var h='';
+  for(var i=0;i<allRoutes.length;i++){
+    var R=allRoutes[i], n=R.zones.length;
+    var lbl = i===0 ? 'Fastest' : ('Alternative '+i);
+    if(i===safestIndex() && n===0) lbl='Safest';
+    h+='<div class="chip'+(i===activeRoute?' on':'')+(n?' risk':' safe')+
+       '" data-i="'+i+'"><div class="lb">'+lbl+'</div>'+
+       '<div class="mn">'+fmtKm(R.distance)+' &middot; '+fmtMin(R.duration)+'</div>'+
+       '<div class="zn '+(n?'r':'g')+'">'+(n?(n+' zone'+(n>1?'s':'')):'no zones')+
+       '</div></div>';
+  }
+  box.innerHTML=h;
+  var chips=box.querySelectorAll('.chip');
+  for(var j=0;j<chips.length;j++){
+    chips[j].addEventListener('click',function(){
+      selectRoute(parseInt(this.getAttribute('data-i'),10));
+      renderChips();
+    });
+  }
+}
+
+/* Draw one route and make it the active one */
+function selectRoute(i){
+  if(!allRoutes.length) return;
+  activeRoute=i;
+  var R=allRoutes[i];
+
+  routeCoords=R.coords; routeCum=R.cum; routeSteps=R.steps;
+  routeZones=R.zones; announced={};
+
+  for(var k=0;k<altLines.length;k++) map.removeLayer(altLines[k]);
+  altLines=[];
+  if(routeLine){ map.removeLayer(routeLine); routeLine=null; }
+  if(routeGlow){ map.removeLayer(routeGlow); routeGlow=null; }
+
+  /* faded lines for the routes not chosen */
+  var P=pal();
+  for(var j=0;j<allRoutes.length;j++){
+    if(j===i) continue;
+    var l=L.polyline(allRoutes[j].coords,{color:P.alt,weight:4,
+      opacity:.55,dashArray:'7 8'}).addTo(map);
+    altLines.push(l);
+  }
+
+  /* white casing underneath, like Google, so the line reads on any map */
+  routeGlow=L.polyline(routeCoords,{color:P.casing,weight:11,opacity:.95}).addTo(map);
+  routeLine=L.polyline(routeCoords,{color:P.route,weight:6,opacity:1,
+    lineJoin:'round',lineCap:'round'}).addTo(map);
+  map.fitBounds(routeLine.getBounds(),{padding:[45,45]});
+
+  document.getElementById('sumDist').textContent=fmtKm(R.distance);
+  document.getElementById('sumTime').textContent=fmtMin(R.duration);
+  document.getElementById('sumBox').classList.add('show');
+  document.getElementById('startNav').style.display='block';
+  document.getElementById('gmapBtn').style.display='block';
+  document.getElementById('gmapBtn').href=
+    'https://www.google.com/maps/dir/?api=1&origin='+fromPt.lat+','+fromPt.lng+
+    '&destination='+toPt.lat+','+toPt.lng+'&travelmode=driving';
+
+  renderSteps();
+  drawRouteZoneMarks();
+  renderRouteZones();
+}
+
+function drawRouteZoneMarks(){
+  for(var k=0;k<routeZoneMarks.length;k++) map.removeLayer(routeZoneMarks[k]);
+  routeZoneMarks=[];
+  for(var i=0;i<routeZones.length;i++){
+    var rz=routeZones[i];
+    var P=pal();
+    var c=L.circle([rz.z.lat,rz.z.lng],{radius:(rz.z.radius||20),color:P.zone,
+      weight:2,fillColor:P.zone,fillOpacity:P.zoneFill}).addTo(map);
+    var m=L.circleMarker([rz.z.lat,rz.z.lng],{radius:9,color:P.zone,weight:3,
+      fillColor:P.casing,fillOpacity:1}).addTo(map)
+      .bindPopup('<b>Accident zone</b><br>'+fmtKm(rz.along)+' into the journey<br>'+
+                 (rz.z.time||''));
+    routeZoneMarks.push(c); routeZoneMarks.push(m);
+  }
+}
+
+function renderSteps(){
+  var box=document.getElementById('stepList');
+  var tog=document.getElementById('stepsToggle');
+  var emp=document.getElementById('stepsEmpty');
+  if(!routeSteps.length){ emp.style.display='block'; tog.style.display='none'; return; }
+  emp.style.display='none'; tog.style.display='block';
+  var h='';
+  for(var i=0;i<routeSteps.length;i++){
+    h+='<div class="stp"><div class="n">'+fmtKm(routeSteps[i].d)+'</div>'+
+       '<div class="d">'+routeSteps[i].text+'</div></div>';
+  }
+  box.innerHTML=h;
+  tog.textContent='Show all '+routeSteps.length+' directions';
+}
+document.getElementById('stepsToggle').onclick=function(){
+  var f=document.getElementById('stepList');
+  f.classList.toggle('open');
+  this.textContent=f.classList.contains('open')
+    ? 'Hide directions' : ('Show all '+routeSteps.length+' directions');
+};
+
+/* ================= ZONES ON ROUTE ================= */
+var ROUTE_CORRIDOR = 350;   /* metres either side of the road */
+
+function findZonesOnRoute(){
+  if(!allRoutes.length){ renderRouteZones(); return; }
+  scoreRoutes();
+  routeZones=allRoutes[activeRoute].zones;
+  drawRouteZoneMarks();
+  renderChips();
+  renderRouteZones();
+}
+
+function renderRouteZones(){
+  var list=document.getElementById('routeZones');
+  var cnt=document.getElementById('rzCount');
+  var sum=document.getElementById('sumZones');
+  var box=document.getElementById('sumBox');
+  var note=document.getElementById('sumNote');
+
+  cnt.textContent=routeZones.length;
+  cnt.className=routeZones.length?'count hot':'count ok';
+  sum.textContent=routeZones.length;
+  sum.className=routeZones.length?'v warn':'v safe';
+
+  if(!routeZones.length){
+    list.innerHTML='<p class="empty">No accident zones lie on this route. The road ahead is clear.</p>';
+    box.classList.remove('risky');
+    if(routeCoords.length) note.textContent=
+      'No accident zones were reported along this route. Drive safely.';
+    return;
+  }
+
+  box.classList.add('risky');
+  note.textContent='Caution. '+routeZones.length+' accident '+
+    (routeZones.length===1?'zone lies':'zones lie')+
+    ' on this route. You will be warned by voice as you approach each one.';
+
+  var h='';
+  for(var i=0;i<routeZones.length;i++){
+    var rz=routeZones[i], z=rz.z;
+    h+='<div class="zrow"><div class="a">'+
+       '<div class="t">Accident zone '+(i+1)+'</div>'+
+       '<div class="km">'+fmtKm(rz.along)+' in</div></div>'+
+       '<div class="c">'+Number(z.lat).toFixed(5)+', '+Number(z.lng).toFixed(5)+
+       ' &middot; '+(z.radius||20)+' m radius</div>'+
+       '<div class="w">'+Math.round(rz.offRoad)+' m from the road &middot; '+
+       (z.time||'recent')+'</div></div>';
+  }
+  list.innerHTML=h;
+}
+
+/* ================= LIVE NAVIGATION ================= */
+function setNavBox(cls,big,det,mono){
+  var b=document.getElementById('navBox');
+  b.className='navbox show'+(cls?(' '+cls):'');
+  var bg=document.getElementById('navBig');
+  bg.className='big '+(cls==='crit'?'r':cls==='warn'?'a':'g');
+  bg.textContent=big;
+  document.getElementById('navDet').textContent=det;
+  document.getElementById('navMono').textContent=mono||'';
+}
+
+document.getElementById('startNav').onclick=function(){
+  if(!routeCoords.length) return;
+  if(!audioCtx){ try{ audioCtx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+  tone(880,1150,0.18,0.25);
+  navActive=true; announced={};
+  document.body.classList.add('tracking');
+  this.style.display='none';
+  document.getElementById('stopNav').style.display='block';
+  document.getElementById('d-snd').textContent='Enabled';
+  askNotify(); keepAwake();
+  speak('Navigation started. You will be warned before every accident zone.');
+  setNavBox('', 'Road clear', 'Waiting for your position.', '');
+  if(navigator.geolocation){
+    navWatch=navigator.geolocation.watchPosition(function(p){
+      myLat=p.coords.latitude; myLng=p.coords.longitude;
+      navTick(); check();
+    },function(){
+      setNavBox('warn','Location off','Allow location access to receive warnings while driving.','');
+    },{enableHighAccuracy:true,maximumAge:1500,timeout:20000});
+  }
+  toast('Navigation started','Voice warnings will sound before each accident zone.','ok');
+};
+
+document.getElementById('stopNav').onclick=function(){
+  navActive=false;
+  if(navWatch!==null && navigator.geolocation){
+    navigator.geolocation.clearWatch(navWatch); navWatch=null;
+  }
+  this.style.display='none';
+  document.getElementById('startNav').style.display='block';
+  document.getElementById('navBox').classList.remove('show');
+  stopAlarm();
+  speak('Navigation stopped.');
+};
+
+function navTick(){
+  if(!navActive || myLat===null || !routeCoords.length) return;
+
+  var me=nearestOnRoute(myLat,myLng);
+  var myAlong=routeCum[me.idx];
+  var remain=routeCum[routeCum.length-1]-myAlong;
+
+  var next=null, gap=Infinity;
+  for(var i=0;i<routeZones.length;i++){
+    var g=routeZones[i].along-myAlong;
+    if(g>-60 && g<gap){ gap=g; next=routeZones[i]; }
+  }
+
+  if(me.d>500){
+    setNavBox('warn','Off route',
+      'You are '+fmtKm(me.d)+' from the planned road. Rejoin the route or plan a new one.',
+      fmtKm(remain)+' remaining');
+    return;
+  }
+
+  if(!next){
+    setNavBox('','Road clear','No accident zones ahead on this route.',
+      fmtKm(remain)+' remaining to destination');
+    return;
+  }
+
+  var key=next.z.lat.toFixed(5)+next.z.lng.toFixed(5);
+  if(!announced[key]) announced[key]={};
+  var a=announced[key];
+
+  if(gap<=1000 && gap>500 && !a.k1){
+    a.k1=1; tone(880,700,0.26,0.28); warnVoice();
+    notify('Accident zone ahead','An accident zone is 1 kilometre ahead on your route.',false);
+  }
+  if(gap<=500 && gap>200 && !a.k5){
+    a.k5=1; tone(920,720,0.28,0.30); warnVoice();
+  }
+  if(gap<=200 && gap>0 && !a.k2){
+    a.k2=1; tone(980,740,0.32,0.34); warnVoice();
+    notify('Accident zone in 200 metres','Slow down. An accident was reported here recently.',true);
+  }
+
+  var cls = gap<=200 ? 'crit' : gap<=1000 ? 'warn' : '';
+  var big = gap<=200 ? 'Slow down' : gap<=1000 ? 'Zone ahead' : 'Road clear';
+  var det = gap<=200
+    ? 'Accident zone immediately ahead. An accident was reported here recently.'
+    : 'An accident zone lies ahead on your route. A voice warning will sound as you approach.';
+  setNavBox(cls,big,det,
+    fmtKm(Math.max(0,gap))+' to the zone  |  '+fmtKm(remain)+' remaining');
+
+  if(gap<=200) startAlarm(Math.max(1,gap/10));
+  else if(!inZone) stopAlarm();
+}
+/* ================= PROXIMITY (works everywhere) ================= */
+function countTo(target){
+  var el=document.getElementById('bigdist'), from=shownDist, t0=performance.now();
+  function step(t){
+    var p=Math.min((t-t0)/450,1), e=1-Math.pow(1-p,3);
+    el.textContent=Math.round(from+(target-from)*e);
+    if(p<1) requestAnimationFrame(step); else shownDist=target;
+  }
+  requestAnimationFrame(step);
+}
+function setArc(d,radius){
+  var span=radius*6, p=Math.max(0,Math.min(1,1-(d/span)));
+  document.getElementById('arc').style.strokeDashoffset=(RING*(1-p)).toFixed(1);
+}
+function keepAwake(){
+  try{
+    if('wakeLock' in navigator){
+      navigator.wakeLock.request('screen').then(function(w){wakeLock=w;}).catch(function(){});
+      document.addEventListener('visibilitychange',function(){
+        if(document.visibilityState==='visible' && 'wakeLock' in navigator){
+          navigator.wakeLock.request('screen').then(function(w){wakeLock=w;}).catch(function(){});
+        }
+      });
+    }
+  }catch(e){}
+}
+
+document.getElementById('enable').onclick=function(){
+  try{ audioCtx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
+  tone(880,1100,0.18,0.25);
+  document.body.classList.add('tracking');
+  document.getElementById('d-snd').textContent='Enabled';
+  askNotify(); keepAwake();
+  toast('Monitoring started','Alarm sound is on. Keep this app open while travelling.','ok');
+  if(navigator.geolocation){
+    navigator.geolocation.watchPosition(function(p){
+      if(simulate) return;
+      myLat=p.coords.latitude; myLng=p.coords.longitude;
+      check(); if(navActive) navTick();
+    },function(){
+      toast('Location unavailable','Your browser blocked location. Use Simulate entering zone to test.','red');
+    },{enableHighAccuracy:true,maximumAge:2000,timeout:20000});
+  }
+  this.style.display='none';
+};
+
+document.getElementById('sim').onclick=function(){
+  if(!audioCtx){ try{ audioCtx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+  document.body.classList.add('tracking');
+  if(zones.length===0){ toast('No zone active','Trigger the device first, then simulate.'); return; }
+  simulate=!simulate;
+  if(simulate){
+    myLat=zones[0].lat+0.00005; myLng=zones[0].lng;
+    this.textContent='Leave simulated zone'; this.classList.add('on');
+  }else{
+    myLat=zones[0].lat+0.004; myLng=zones[0].lng;
+    this.textContent='Simulate entering zone'; this.classList.remove('on');
+  }
+  check();
+};
+
+function check(){
+  var nd=null, near=null;
+  if(myLat!==null){
+    for(var i=0;i<zones.length;i++){
+      var d=dist(myLat,myLng,zones[i].lat,zones[i].lng);
+      if(nd===null||d<nd){ nd=d; near=zones[i]; }
+    }
+    if(!meMarker){
+      var Pm=pal();
+      meMarker=L.circleMarker([myLat,myLng],{radius:8,color:Pm.meRing,weight:3,
+        fillColor:Pm.me,fillOpacity:1}).addTo(map).bindPopup('You');
+    } else meMarker.setLatLng([myLat,myLng]);
+  }
+  var b=document.body,
+      h=document.getElementById('headline'),
+      s=document.getElementById('subline'),
+      e=document.getElementById('eyebrow'),
+      sn=document.getElementById('s-near');
+
+  if(near && nd<=(near.radius||20)){
+    if(!inZone){
+      warnVoice();
+      toast('Danger zone entered','An accident was reported here in the last few minutes.','red');
+      notify('Danger zone - slow down','You have entered an area where an accident was reported.',true);
+    }
+    inZone=true;
+    b.classList.add('danger');
+    document.documentElement.style.setProperty('--accent','#EF4444');
+    e.textContent='Alarm active'; h.textContent='Slow down';
+    s.textContent='An accident was reported at this spot within the last few minutes. Emergency help or an obstruction may be on the road ahead.';
+    sn.textContent=nd.toFixed(0)+' m'; sn.className='v hot';
+    countTo(nd); setArc(nd,near.radius||20); startAlarm(nd);
+  }else{
+    if(inZone){ stopAlarm(); toast('Zone cleared','You have left the danger area.','ok'); }
+    inZone=false;
+    b.classList.remove('danger');
+    document.documentElement.style.setProperty('--accent','#22C55E');
+    h.textContent='Road clear';
+    if(near){
+      e.textContent='Monitoring';
+      s.textContent='An incident zone is active nearby. You will be alerted automatically if you come within its radius.';
+      sn.textContent=nd.toFixed(0)+' m'; sn.className='v';
+      countTo(nd); setArc(nd,near.radius||20);
+    }else if(myLat===null){
+      e.textContent='Standing by';
+      s.textContent='Start monitoring to be warned when you approach a recent accident site.';
+      sn.textContent='--'; sn.className='v';
+    }else{
+      e.textContent='Monitoring';
+      s.textContent='No incident zones are active near you right now.';
+      document.getElementById('bigdist').textContent='--';
+      document.getElementById('arc').style.strokeDashoffset=RING;
+      sn.textContent='--'; sn.className='v';
+    }
+  }
+}
+
+/* ================= HISTORY ================= */
+var hmap=null, hlayers=[];
+function initHistoryMap(){
+  if(hmap) return;
+  hmap=L.map('hmap',{zoomControl:false}).setView([9.9252,78.1198],13);
+  L.control.zoom({position:'bottomright'}).addTo(hmap);
+  var cfg=MAP_STYLES[mapStyle];
+  hBaseLayer=L.tileLayer(cfg.url,{maxZoom:cfg.max,attribution:cfg.attr}).addTo(hmap);
+  if(cfg.light) hmap.getContainer().classList.add('light');
+}
+function renderHistory(hist){
+  var list=document.getElementById('histlist');
+  document.getElementById('hcount').textContent=hist.length;
+  document.getElementById('hcount').className=hist.length?'count hot':'count';
+  document.getElementById('h-total').textContent=hist.length;
+  var now=Math.floor(Date.now()/1000), week=0;
+  for(var i=0;i<hist.length;i++) if(now-hist[i].ts<604800) week++;
+  document.getElementById('h-week').textContent=week;
+  if(!hist.length){ list.innerHTML='<p class="empty">No incidents recorded yet.</p>'; return; }
+  var h='';
+  for(var i=0;i<hist.length;i++){
+    var e=hist[i], cls=e.kind==='SOS'?'sos':'acc';
+    var g=(e.gForce!==undefined)?(' | '+Number(e.gForce).toFixed(2)+' G'):'';
+    var t=(e.tilt!==undefined)?(' | '+e.tilt+' deg'):'';
+    h+='<div class="hist '+cls+'"><div class="t">'+
+       (e.kind==='SOS'?'Manual SOS':'Accident')+'</div>'+
+       '<div class="c">'+Number(e.lat).toFixed(5)+', '+Number(e.lng).toFixed(5)+g+t+'</div>'+
+       '<div class="w">'+(e.time||'')+' &middot; <a href="https://www.google.com/maps?q='+
+       e.lat+','+e.lng+'" target="_blank">Open in maps</a></div></div>';
+  }
+  list.innerHTML=h;
+  if(hmap){
+    for(var k=0;k<hlayers.length;k++) hmap.removeLayer(hlayers[k]);
+    hlayers=[]; var pts=[];
+    for(var i=0;i<hist.length;i++){
+      var e=hist[i], P=pal();
+      var col=e.kind==='SOS'?P.veh:P.zone;
+      var mk=L.circleMarker([e.lat,e.lng],{radius:8,color:P.casing,weight:2,
+        fillColor:col,fillOpacity:.9}).addTo(hmap)
+        .bindPopup((e.kind==='SOS'?'Manual SOS':'Accident')+'<br>'+(e.time||''));
+      hlayers.push(mk); pts.push([e.lat,e.lng]);
+    }
+    if(pts.length===1) hmap.setView(pts[0],16);
+    else if(pts.length>1) hmap.fitBounds(pts,{padding:[30,30],maxZoom:16});
+  }
+}
+
+/* ================= SETTINGS ================= */
+function labelDuration(sec){
+  if(sec<3600) return (sec/60)+' min';
+  if(sec<86400) return (sec/3600)+' hr';
+  var d=sec/86400; return d+(d===1?' day':' days');
+}
+document.getElementById('saveCfg').onclick=function(){
+  var life=parseInt(document.getElementById('setLife').value,10);
+  var rad=parseInt(document.getElementById('setRad').value,10);
+  var btn=this; btn.textContent='Saving';
+  fetch(FIREBASE_URL+'/config.json',{method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({zoneLifetimeSec:life,zoneRadiusM:rad})
+  }).then(function(r){
+    if(r.ok){
+      btn.textContent='Saved';
+      toast('Settings saved','New zones will use '+labelDuration(life)+' duration and '+
+            rad+' m radius. The device updates within a minute.','ok');
+      document.getElementById('d-rad').textContent=rad+' m';
+      document.getElementById('d-life').textContent=labelDuration(life);
+    } else btn.textContent='Save failed';
+    setTimeout(function(){ btn.textContent='Save settings'; },2200);
+  }).catch(function(){
+    btn.textContent='Save failed';
+    setTimeout(function(){ btn.textContent='Save settings'; },2200);
+  });
+};
+
+/* ================= LIVE DATA ================= */
+function refreshZoneCircles(){
+  for(var i=0;i<layers.length;i++) map.removeLayer(layers[i]);
+  layers=[];
+  var P=pal();
+  for(var i=0;i<zones.length;i++){
+    var z=zones[i], r=z.radius||20;
+    var c=L.circle([z.lat,z.lng],{radius:r,color:P.zone,weight:2,
+      fillColor:P.zone,fillOpacity:P.zoneFill*0.8}).addTo(map);
+    layers.push(c);
+  }
+}
+
+function ago(sec){
+  if(sec<0) sec=0;
+  if(sec<60) return sec+'s ago';
+  if(sec<3600) return Math.floor(sec/60)+'m ago';
+  return Math.floor(sec/3600)+'h ago';
+}
+
+function refresh(){
+  fetch(FIREBASE_URL+'/.json').then(function(r){return r.json();}).then(function(d){
+    document.getElementById('d-db').textContent='Connected';
+    zones=[]; var now=Math.floor(Date.now()/1000);
+
+    if(d && d.zones){
+      for(var k in d.zones){
+        var z=d.zones[k];
+        if(z && z.active && z.expiresAt>now){
+          zones.push(z);
+          var key=z.lat.toFixed(5)+z.lng.toFixed(5);
+          if(!seenZones[key]){
+            seenZones[key]=1;
+            toast('New incident reported','A crash was detected. The area is now marked.','red');
+            notify('Accident reported nearby','A crash was detected and the area is marked as an incident zone.',true);
+          }
+        }
+      }
+    }
+
+    refreshZoneCircles();
+
+    var sz=document.getElementById('s-zones');
+    sz.textContent=zones.length; sz.className=zones.length?'v hot':'v';
+    if(zones.length) document.getElementById('d-rad').textContent=(zones[0].radius||20)+' m';
+
+    findZonesOnRoute();
+
+    histCache=[];
+    if(d && d.history){
+      for(var hk in d.history){ var he=d.history[hk]; if(he && he.ts) histCache.push(he); }
+      histCache.sort(function(x,y){ return y.ts-x.ts; });
+    }
+    renderHistory(histCache);
+
+    if(d && d.config && !cfgLoaded){
+      cfgLoaded=true;
+      if(d.config.zoneLifetimeSec){
+        document.getElementById('setLife').value=String(d.config.zoneLifetimeSec);
+        document.getElementById('d-life').textContent=labelDuration(d.config.zoneLifetimeSec);
+      }
+      if(d.config.zoneRadiusM){
+        document.getElementById('setRad').value=String(d.config.zoneRadiusM);
+        document.getElementById('d-rad').textContent=d.config.zoneRadiusM+' m';
+      }
+    }
+
+    var al=[];
+    if(d && d.alerts){
+      for(var ak in d.alerts){ var a=d.alerts[ak]; if(a && a.ts) al.push(a); }
+      al.sort(function(x,y){ return y.ts-x.ts; });
+      if(al.length>8) al=al.slice(0,8);
+    }
+    var alist=document.getElementById('alertlist');
+    var acnt=document.getElementById('acount');
+    acnt.textContent=al.length;
+    acnt.className=al.length?'count hot':'count';
+    document.getElementById('s-alerts').textContent=al.length;
+
+    if(!al.length){
+      alist.innerHTML='<p class="empty">No alerts yet. Messages sent to the family group appear here.</p>';
+      document.getElementById('homefeed').innerHTML='<p class="empty">Nothing reported yet. Roads are clear.</p>';
+    }else{
+      var ah='';
+      for(var i=0;i<al.length;i++){
+        var a=al[i], red=(a.type!=='CLEARED');
+        ah+='<div class="alrt'+(red?' red':'')+'"><div class="h">'+a.title+'</div>'+
+            '<div class="b">'+a.body+'</div><div class="w">'+(a.time||'')+'</div></div>';
+        if(!seenAlerts[a.ts]){
+          seenAlerts[a.ts]=1;
+          if(!firstAlertLoad){
+            notify(a.title,a.body,red);
+            if(currentPage!=='alerts') document.getElementById('alertpip').classList.add('show');
+          }
+        }
+      }
+      alist.innerHTML=ah;
+      var top=al[0];
+      document.getElementById('homefeed').innerHTML=
+        '<div class="alrt'+((top.type!=='CLEARED')?' red':'')+'"><div class="h">'+
+        top.title+'</div><div class="b">'+top.body+'</div><div class="w">'+
+        (top.time||'')+'</div></div>';
+    }
+    firstAlertLoad=false;
+
+    if(d && d.vehicle){
+      var age=now-d.vehicle.updatedAt;
+      document.getElementById('vrider').textContent=d.vehicle.rider||'--';
+      document.getElementById('vplate').textContent=d.vehicle.vehicle||'--';
+      document.getElementById('plate').textContent=d.vehicle.vehicle||'--';
+      document.getElementById('vpos').textContent=
+        d.vehicle.lat.toFixed(5)+', '+d.vehicle.lng.toFixed(5);
+      document.getElementById('vsat').textContent=d.vehicle.satellites;
+      document.getElementById('vage').innerHTML=
+        '<span class="fresh'+(age>45?' stale':'')+'"></span>'+ago(age);
+      var sg=document.getElementById('s-gps');
+      sg.textContent=(age>60)?'Offline':(d.vehicle.satellites+' sats');
+      sg.className=(age>60)?'v sm hot':'v sm ok';
+      if(!vehMarker){
+        var Pv=pal();
+        vehMarker=L.circleMarker([d.vehicle.lat,d.vehicle.lng],{radius:7,
+          color:Pv.casing,weight:3,fillColor:Pv.veh,fillOpacity:1})
+          .addTo(map).bindPopup('Vehicle');
+      } else vehMarker.setLatLng([d.vehicle.lat,d.vehicle.lng]);
+    }
+
+    check();
+  }).catch(function(){
+    document.getElementById('d-db').textContent='No connection';
+    document.getElementById('eyebrow').textContent='No connection';
+    document.getElementById('subline').textContent=
+      'Cannot reach the incident database. Check your internet connection.';
+  });
+}
+
+askNotify();
+refresh();
+setInterval(refresh,4000);
+</script>
+</body>
+</html>
